@@ -1,10 +1,12 @@
 """
-Publie UNE seule vignette (la prochaine dans l'ordre) sur Instagram
-via l'API Graph, en lisant/mettant à jour un fichier d'état local
-(state.json) pour savoir où on en est.
+Publie un GROUPE de vignettes consécutives (une ligne complète de la
+fresque) sur Instagram via l'API Graph, en lisant/mettant à jour un
+fichier d'état local (state.json) pour savoir où on en est.
 
-Conçu pour être appelé à répétition par un workflow GitHub Actions
-programmé plusieurs fois par jour — chaque exécution publie 1 tuile.
+Conçu pour être appelé par un workflow GitHub Actions programmé
+3 fois par jour — chaque exécution publie POSTS_PER_RUN vignettes
+(3 par défaut = 1 ligne de la fresque), espacées d'une pause
+aléatoire pour ne pas ressembler à une rafale mécanique.
 
 Variables d'environnement attendues (fournies en secrets GitHub) :
   - IG_USER_ID       : l'ID du compte Instagram Business (the_fugu_guest_house)
@@ -27,10 +29,16 @@ TILES_DIR = "tiles"          # dossier du repo contenant 1.jpg, 2.jpg, ...
 STATE_FILE = "state.json"
 BRANCH = "main"
 
-# Jitter aléatoire en début de run pour ne pas publier pile à l'heure cron
-# (0 à 15 minutes). Le repo étant public, le temps de job GitHub Actions
-# est illimité, donc pas de souci de coût à attendre.
+POSTS_PER_RUN = 3   # 1 ligne de la fresque (3 colonnes) par déclenchement
+
+# Jitter aléatoire avant la 1ère publication du groupe, pour ne pas
+# publier pile à l'heure cron (0 à 15 minutes).
 MAX_JITTER_SECONDS = 15 * 60
+
+# Pause aléatoire ENTRE les publications d'un même groupe (3 à 12 minutes),
+# pour que les 3 vignettes d'une ligne n'arrivent pas d'un coup.
+MIN_GAP_SECONDS = 3 * 60
+MAX_GAP_SECONDS = 12 * 60
 
 
 def load_state() -> dict:
@@ -99,21 +107,7 @@ def publish_container(ig_user_id: str, access_token: str, creation_id: str) -> s
     return resp.json()["id"]
 
 
-def main():
-    ig_user_id = os.environ["IG_USER_ID"]
-    access_token = os.environ["IG_ACCESS_TOKEN"]
-
-    state = load_state()
-    index = state["next_index"]
-
-    if index > TOTAL_TILES:
-        print(f"Toutes les {TOTAL_TILES} vignettes ont déjà été publiées. Rien à faire.")
-        return
-
-    jitter = random.randint(0, MAX_JITTER_SECONDS)
-    print(f"Attente de {jitter}s (jitter) avant publication de la vignette {index}/{TOTAL_TILES}...")
-    time.sleep(jitter)
-
+def publish_one(ig_user_id: str, access_token: str, index: int) -> str:
     image_url = get_image_url(index)
     caption = f"{index}/{TOTAL_TILES}"  # simple, ajustable si tu veux une légende différente
 
@@ -126,14 +120,44 @@ def main():
     print("Publication...")
     media_id = publish_container(ig_user_id, access_token, creation_id)
     print(f"✓ Vignette {index}/{TOTAL_TILES} publiée avec succès (media id: {media_id}).")
+    return media_id
 
-    state["next_index"] = index + 1
-    save_state(state)
+
+def main():
+    ig_user_id = os.environ["IG_USER_ID"]
+    access_token = os.environ["IG_ACCESS_TOKEN"]
+
+    had_failure = False
+
+    for i in range(POSTS_PER_RUN):
+        state = load_state()
+        index = state["next_index"]
+
+        if index > TOTAL_TILES:
+            print(f"Toutes les {TOTAL_TILES} vignettes ont déjà été publiées. Rien à faire.")
+            break
+
+        if i == 0:
+            wait_seconds = random.randint(0, MAX_JITTER_SECONDS)
+            print(f"Attente de {wait_seconds}s (jitter de début de groupe)...")
+        else:
+            wait_seconds = random.randint(MIN_GAP_SECONDS, MAX_GAP_SECONDS)
+            print(f"Pause de {wait_seconds}s avant la prochaine vignette du groupe ({i+1}/{POSTS_PER_RUN})...")
+        time.sleep(wait_seconds)
+
+        try:
+            publish_one(ig_user_id, access_token, index)
+        except Exception as e:
+            print(f"✗ Échec sur la vignette {index}/{TOTAL_TILES} : {e}", file=sys.stderr)
+            had_failure = True
+            break  # on arrête le groupe ici, mais on garde la progression déjà sauvegardée
+
+        state["next_index"] = index + 1
+        save_state(state)
+
+    if had_failure:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        print(f"✗ Échec de la publication : {e}", file=sys.stderr)
-        sys.exit(1)
+    main()
