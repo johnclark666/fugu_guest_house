@@ -1,0 +1,55 @@
+name: Publish fresque tile
+
+on:
+  workflow_dispatch: {}   # permet un déclenchement manuel pour tester
+  schedule:
+    # Horaires en UTC, répartis sur la journée (~toutes les 1h30-2h).
+    # Ajuste si tu veux viser des heures précises en heure de Paris
+    # (UTC+1 en hiver, UTC+2 en été).
+    - cron: '7 6 * * *'
+    - cron: '52 7 * * *'
+    - cron: '31 9 * * *'
+    - cron: '18 11 * * *'
+    - cron: '44 12 * * *'
+    - cron: '26 14 * * *'
+    - cron: '55 15 * * *'
+    - cron: '12 17 * * *'
+    - cron: '39 18 * * *'
+    - cron: '21 20 * * *'
+
+concurrency:
+  group: publish-fresque-tile
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Publish next tile
+        env:
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+        run: python publish_next.py
+
+      - name: Commit updated state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add state.json
+          git diff --quiet --cached || git commit -m "Publish next tile [skip ci]"
+          git push
