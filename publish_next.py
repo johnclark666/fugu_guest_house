@@ -27,6 +27,7 @@ GRAPH_API_BASE = f"https://graph.facebook.com/{GRAPH_API_VERSION}"
 TOTAL_TILES = 1254
 TILES_DIR = "tiles"          # dossier du repo contenant 1.jpg, 2.jpg, ...
 STATE_FILE = "state.json"
+CAPTIONS_FILE = "captions.txt"  # une phrase par ligne, cycle une fois épuisé
 BRANCH = "main"
 
 POSTS_PER_RUN = 3   # 1 ligne de la fresque (3 colonnes) par déclenchement
@@ -56,6 +57,24 @@ def save_state(state: dict):
 def get_image_url(index: int) -> str:
     repo = os.environ["GITHUB_REPOSITORY"]  # ex: "tonpseudo/fresque-repo"
     return f"https://raw.githubusercontent.com/{repo}/{BRANCH}/{TILES_DIR}/{index}.jpg"
+
+
+_captions_cache = None
+
+
+def load_captions() -> list[str]:
+    global _captions_cache
+    if _captions_cache is None:
+        with open(CAPTIONS_FILE, "r", encoding="utf-8") as f:
+            _captions_cache = [line.strip() for line in f if line.strip()]
+        if not _captions_cache:
+            raise RuntimeError(f"{CAPTIONS_FILE} est vide ou introuvable.")
+    return _captions_cache
+
+
+def get_caption(index: int) -> str:
+    captions = load_captions()
+    return captions[(index - 1) % len(captions)]
 
 
 def create_media_container(ig_user_id: str, access_token: str, image_url: str, caption: str) -> str:
@@ -109,7 +128,7 @@ def publish_container(ig_user_id: str, access_token: str, creation_id: str) -> s
 
 def publish_one(ig_user_id: str, access_token: str, index: int) -> str:
     image_url = get_image_url(index)
-    caption = f"{index}/{TOTAL_TILES}"  # simple, ajustable si tu veux une légende différente
+    caption = get_caption(index)
 
     print(f"Création du container pour {image_url} ...")
     creation_id = create_media_container(ig_user_id, access_token, image_url, caption)
