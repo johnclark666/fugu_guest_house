@@ -46,4 +46,12 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add state.json
           git diff --quiet --cached || git commit -m "Publish next tile [skip ci]"
-          git push
+          # Le repo distant a pu avancer pendant l'exécution du script
+          # (jitter + pauses peuvent durer jusqu'à ~40 min) — on rebase
+          # avant de pousser, avec quelques tentatives en cas de nouvelle
+          # course entre deux runs qui se chevaucheraient.
+          for i in 1 2 3; do
+            git pull --rebase origin main && git push && break
+            echo "Tentative $i échouée, nouvel essai..."
+            sleep 10
+          done
