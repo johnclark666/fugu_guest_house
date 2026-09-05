@@ -77,6 +77,16 @@ def get_caption(index: int) -> str:
     return captions[(index - 1) % len(captions)]
 
 
+def _raise_with_detail(resp: requests.Response):
+    """Comme raise_for_status(), mais affiche le corps de la réponse
+    (le message d'erreur détaillé de Meta) avant de lever l'exception."""
+    if not resp.ok:
+        print(f"--- Réponse d'erreur brute de Meta ({resp.status_code}) ---")
+        print(resp.text)
+        print("---------------------------------------------------------")
+    resp.raise_for_status()
+
+
 def create_media_container(ig_user_id: str, access_token: str, image_url: str, caption: str) -> str:
     resp = requests.post(
         f"{GRAPH_API_BASE}/{ig_user_id}/media",
@@ -87,7 +97,7 @@ def create_media_container(ig_user_id: str, access_token: str, image_url: str, c
         },
         timeout=30,
     )
-    resp.raise_for_status()
+    _raise_with_detail(resp)
     return resp.json()["id"]
 
 
@@ -100,7 +110,7 @@ def wait_until_ready(creation_id: str, access_token: str, timeout_seconds: int =
             params={"fields": "status_code", "access_token": access_token},
             timeout=30,
         )
-        resp.raise_for_status()
+        _raise_with_detail(resp)
         status = resp.json().get("status_code")
 
         if status == "FINISHED":
@@ -122,7 +132,7 @@ def publish_container(ig_user_id: str, access_token: str, creation_id: str) -> s
         },
         timeout=30,
     )
-    resp.raise_for_status()
+    _raise_with_detail(resp)
     return resp.json()["id"]
 
 
