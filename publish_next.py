@@ -36,10 +36,11 @@ POSTS_PER_RUN = 3   # 1 ligne de la fresque (3 colonnes) par déclenchement
 # publier pile à l'heure cron (0 à 15 minutes).
 MAX_JITTER_SECONDS = 15 * 60
 
-# Pause aléatoire ENTRE les publications d'un même groupe (3 à 12 minutes),
-# pour que les 3 vignettes d'une ligne n'arrivent pas d'un coup.
-MIN_GAP_SECONDS = 3 * 60
-MAX_GAP_SECONDS = 12 * 60
+# Pause aléatoire ENTRE les publications d'un même groupe (30s à 2 minutes),
+# pour que les 3 vignettes d'une ligne arrivent rapidement mais pas exactement
+# au même instant.
+MIN_GAP_SECONDS = 30
+MAX_GAP_SECONDS = 2 * 60
 
 
 def load_state() -> dict:
