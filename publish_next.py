@@ -24,7 +24,7 @@ import requests
 GRAPH_API_VERSION = "v25.0"
 GRAPH_API_BASE = f"https://graph.facebook.com/{GRAPH_API_VERSION}"
 
-TOTAL_TILES = 1254
+TOTAL_TILES = 939
 TILES_DIR = "tiles"          # dossier du repo contenant 1.jpg, 2.jpg, ...
 STATE_FILE = "state.json"
 CAPTIONS_FILE = "captions.txt"  # une phrase par ligne, cycle une fois épuisé
