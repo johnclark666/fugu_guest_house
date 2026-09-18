@@ -115,6 +115,7 @@ def wait_until_ready(creation_id: str, access_token: str, timeout_seconds: int =
         status = resp.json().get("status_code")
 
         if status == "FINISHED":
+            time.sleep(5)  # petit tampon avant de publier, évite les faux "pas encore prêt"
             return
         if status == "ERROR":
             raise RuntimeError(f"Le container {creation_id} est passé en erreur côté Instagram.")
@@ -124,17 +125,39 @@ def wait_until_ready(creation_id: str, access_token: str, timeout_seconds: int =
     raise TimeoutError(f"Le container {creation_id} n'est pas prêt après {timeout_seconds}s.")
 
 
-def publish_container(ig_user_id: str, access_token: str, creation_id: str) -> str:
-    resp = requests.post(
-        f"{GRAPH_API_BASE}/{ig_user_id}/media_publish",
-        data={
-            "creation_id": creation_id,
-            "access_token": access_token,
-        },
-        timeout=30,
-    )
-    _raise_with_detail(resp)
-    return resp.json()["id"]
+def publish_container(ig_user_id: str, access_token: str, creation_id: str, retries: int = 4) -> str:
+    """Publie le container. Meta renvoie parfois "media is not ready"
+    (subcode 2207027) même après un status_code FINISHED — un aléa
+    transitoire côté serveur. On réessaie avec un backoff croissant
+    avant d'abandonner pour de bon."""
+    backoff = 15
+    for attempt in range(1, retries + 1):
+        resp = requests.post(
+            f"{GRAPH_API_BASE}/{ig_user_id}/media_publish",
+            data={
+                "creation_id": creation_id,
+                "access_token": access_token,
+            },
+            timeout=30,
+        )
+        if resp.ok:
+            return resp.json()["id"]
+
+        body = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+        subcode = body.get("error", {}).get("error_subcode")
+        not_ready = subcode == 2207027
+
+        print(f"--- Réponse d'erreur brute de Meta ({resp.status_code}) ---")
+        print(resp.text)
+        print("---------------------------------------------------------")
+
+        if not_ready and attempt < retries:
+            print(f"Media pas encore prêt (tentative {attempt}/{retries}), nouvel essai dans {backoff}s...")
+            time.sleep(backoff)
+            backoff *= 2
+            continue
+
+        resp.raise_for_status()  # épuise les tentatives ou erreur non transitoire -> on lève
 
 
 def publish_one(ig_user_id: str, access_token: str, index: int) -> str:
