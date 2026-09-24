@@ -88,18 +88,40 @@ def _raise_with_detail(resp: requests.Response):
     resp.raise_for_status()
 
 
-def create_media_container(ig_user_id: str, access_token: str, image_url: str, caption: str) -> str:
-    resp = requests.post(
-        f"{GRAPH_API_BASE}/{ig_user_id}/media",
-        data={
-            "image_url": image_url,
-            "caption": caption,
-            "access_token": access_token,
-        },
-        timeout=30,
-    )
-    _raise_with_detail(resp)
-    return resp.json()["id"]
+def create_media_container(ig_user_id: str, access_token: str, image_url: str, caption: str, retries: int = 3) -> str:
+    """Crée le container. GitHub (raw.githubusercontent.com) peut avoir un
+    léger délai de propagation juste après un gros push — Meta échoue
+    alors à récupérer l'image (code 9004 / subcode 2207052) même si le
+    fichier est en réalité valide. On réessaie avant d'abandonner."""
+    backoff = 20
+    for attempt in range(1, retries + 1):
+        resp = requests.post(
+            f"{GRAPH_API_BASE}/{ig_user_id}/media",
+            data={
+                "image_url": image_url,
+                "caption": caption,
+                "access_token": access_token,
+            },
+            timeout=30,
+        )
+        if resp.ok:
+            return resp.json()["id"]
+
+        body = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+        subcode = body.get("error", {}).get("error_subcode")
+        fetch_failed = subcode == 2207052  # "Media download has failed"
+
+        print(f"--- Réponse d'erreur brute de Meta ({resp.status_code}) ---")
+        print(resp.text)
+        print("---------------------------------------------------------")
+
+        if fetch_failed and attempt < retries:
+            print(f"Échec de récupération de l'image par Meta (tentative {attempt}/{retries}), nouvel essai dans {backoff}s...")
+            time.sleep(backoff)
+            backoff *= 2
+            continue
+
+        resp.raise_for_status()
 
 
 def wait_until_ready(creation_id: str, access_token: str, timeout_seconds: int = 120):
